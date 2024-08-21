@@ -1525,4 +1525,103 @@ TEST(BasicBlockDbgInfoTest, DbgMoveToEnd) {
   EXPECT_FALSE(Ret->hasDbgRecords());
 }
 
+// This fails with an assert: "Assertion `!NodePtr->isKnownSentinel()' failed."
+//
+// Original C source:
+//
+// int foo(int fd) { return fd; }
+// int (* arr[2])(int fd) = { foo };
+// int bar(int id, int arg) {
+//  int ret = arr[id](arg);
+//  return ret;
+// }
+//
+// Build command used: clang --target=armv7m-none-eabi -Oz -g -mcpu=cortex-m3 -mthumb -mabi=aapcs -c comm_reduce.c -emit-llvm
+TEST(BasicBlockDbgInfoTest, DbgKnownSentinelCrash) {
+  LLVMContext C;
+  std::unique_ptr<Module> M = parseIR(C, R"---(
+    @arr = dso_local local_unnamed_addr global [2 x ptr] [ptr @foo, ptr null], align 4, !dbg !0
+
+    ; Function Attrs: minsize mustprogress nofree norecurse nosync nounwind optsize willreturn memory(none)
+    define dso_local noundef i32 @foo(i32 noundef returned %fd) #0 !dbg !19 {
+    entry:
+        #dbg_value(i32 %fd, !21, !DIExpression(), !22)
+      ret i32 %fd, !dbg !23
+    }
+
+    ; Function Attrs: minsize nounwind optsize
+    define dso_local i32 @bar(i32 noundef %id, i32 noundef %arg) local_unnamed_addr #1 !dbg !24 {
+    entry:
+        #dbg_value(i32 %id, !28, !DIExpression(), !31)
+        #dbg_value(i32 %arg, !29, !DIExpression(), !31)
+      %arrayidx = getelementptr inbounds [2 x ptr], ptr @arr, i32 0, i32 %id, !dbg !32
+      %0 = load ptr, ptr %arrayidx, align 4, !dbg !32, !tbaa !33
+      %call = tail call i32 %0(i32 noundef %arg) #2, !dbg !32
+        #dbg_value(i32 %call, !30, !DIExpression(), !31)
+      ret i32 %call, !dbg !37
+    }
+
+    attributes #0 = { minsize mustprogress nofree norecurse nosync nounwind optsize willreturn memory(none) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="cortex-m3" "target-features"="+armv7-m,+hwdiv,+thumb-mode,-aes,-bf16,-cdecp0,-cdecp1,-cdecp2,-cdecp3,-cdecp4,-cdecp5,-cdecp6,-cdecp7,-crc,-crypto,-d32,-dotprod,-dsp,-fp-armv8,-fp-armv8d16,-fp-armv8d16sp,-fp-armv8sp,-fp16,-fp16fml,-fp64,-fpregs,-fullfp16,-hwdiv-arm,-i8mm,-lob,-mve,-mve.fp,-neon,-pacbti,-ras,-sb,-sha2,-vfp2,-vfp2sp,-vfp3,-vfp3d16,-vfp3d16sp,-vfp3sp,-vfp4,-vfp4d16,-vfp4d16sp,-vfp4sp" }
+    attributes #1 = { minsize nounwind optsize "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="cortex-m3" "target-features"="+armv7-m,+hwdiv,+thumb-mode,-aes,-bf16,-cdecp0,-cdecp1,-cdecp2,-cdecp3,-cdecp4,-cdecp5,-cdecp6,-cdecp7,-crc,-crypto,-d32,-dotprod,-dsp,-fp-armv8,-fp-armv8d16,-fp-armv8d16sp,-fp-armv8sp,-fp16,-fp16fml,-fp64,-fpregs,-fullfp16,-hwdiv-arm,-i8mm,-lob,-mve,-mve.fp,-neon,-pacbti,-ras,-sb,-sha2,-vfp2,-vfp2sp,-vfp3,-vfp3d16,-vfp3d16sp,-vfp3sp,-vfp4,-vfp4d16,-vfp4d16sp,-vfp4sp" }
+    attributes #2 = { minsize nounwind optsize }
+
+    !llvm.dbg.cu = !{!2}
+    !llvm.module.flags = !{!12, !13, !14, !15, !16, !17}
+
+    !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
+    !1 = distinct !DIGlobalVariable(name: "arr", scope: !2, file: !3, line: 3, type: !5, isLocal: false, isDefinition: true)
+    !2 = distinct !DICompileUnit(language: DW_LANG_C11, file: !3, producer: "", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, globals: !4, splitDebugInlining: false, nameTableKind: None)
+    !3 = !DIFile(filename: "t.c", directory: "/")
+    !4 = !{!0}
+    !5 = !DICompositeType(tag: DW_TAG_array_type, baseType: !6, size: 64, elements: !10)
+    !6 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !7, size: 32)
+    !7 = !DISubroutineType(types: !8)
+    !8 = !{!9, !9}
+    !9 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
+    !10 = !{!11}
+    !11 = !DISubrange(count: 2)
+    !12 = !{i32 7, !"Dwarf Version", i32 5}
+    !13 = !{i32 2, !"Debug Info Version", i32 3}
+    !14 = !{i32 1, !"wchar_size", i32 4}
+    !15 = !{i32 1, !"min_enum_size", i32 4}
+    !16 = !{i32 7, !"frame-pointer", i32 2}
+    !17 = !{i32 7, !"debug-info-assignment-tracking", i1 true}
+    !19 = distinct !DISubprogram(name: "foo", scope: !3, file: !3, line: 1, type: !7, scopeLine: 1, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !2, retainedNodes: !20)
+    !20 = !{!21}
+    !21 = !DILocalVariable(name: "fd", arg: 1, scope: !19, file: !3, line: 1, type: !9)
+    !22 = !DILocation(line: 0, scope: !19)
+    !23 = !DILocation(line: 1, column: 19, scope: !19)
+    !24 = distinct !DISubprogram(name: "bar", scope: !3, file: !3, line: 5, type: !25, scopeLine: 5, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !2, retainedNodes: !27)
+    !25 = !DISubroutineType(types: !26)
+    !26 = !{!9, !9, !9}
+    !27 = !{!28, !29, !30}
+    !28 = !DILocalVariable(name: "id", arg: 1, scope: !24, file: !3, line: 5, type: !9)
+    !29 = !DILocalVariable(name: "arg", arg: 2, scope: !24, file: !3, line: 5, type: !9)
+    !30 = !DILocalVariable(name: "ret", scope: !24, file: !3, line: 6, type: !9)
+    !31 = !DILocation(line: 0, scope: !24)
+    !32 = !DILocation(line: 6, column: 12, scope: !24)
+    !33 = !{!34, !34, i64 0}
+    !34 = !{!"any pointer", !35, i64 0}
+    !35 = !{!"omnipotent char", !36, i64 0}
+    !36 = !{!"Simple C/C++ TBAA"}
+    !37 = !DILocation(line: 7, column: 2, scope: !24)
+  )---");
+  ASSERT_TRUE(M);
+
+  Function *F = M->getFunction("bar");
+  BasicBlock &BB = F->getEntryBlock();
+
+  // Find %call
+  auto I = std::prev(BB.end(), 2);
+
+  BasicBlock *NewBB = BasicBlock::Create(C, "NewBB", F);
+  BasicBlock *NewBB2 = BasicBlock::Create(C, "NewBB2", F);
+
+  NewBB->splice(NewBB->end(), &BB, std::next(I), BB.end());
+  NewBB2->splice(NewBB2->end(), &BB, I, BB.end());
+
+  llvm::dbgs() << "Didn't crash!\n";
+  ASSERT_TRUE(true);
+}
+
 } // End anonymous namespace.
