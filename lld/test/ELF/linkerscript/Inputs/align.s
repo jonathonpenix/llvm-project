@@ -11,3 +11,5 @@ _start:
 .section .ccc, "a"
 .quad 0
 
+.section .ddd, "a"
+.quad 0

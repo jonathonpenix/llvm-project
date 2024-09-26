@@ -119,9 +119,9 @@ StringRef LinkerScript::getOutputSectionName(const InputSectionBase *s) const {
 
 uint64_t ExprValue::getValue() const {
   if (sec)
-    return alignToPowerOf2(sec->getOutputSection()->addr + sec->getOffset(val),
+    return alignTo(sec->getOutputSection()->addr + sec->getOffset(val),
                            alignment);
-  return alignToPowerOf2(val, alignment);
+  return alignTo(val, alignment);
 }
 
 uint64_t ExprValue::getSecAddr() const {

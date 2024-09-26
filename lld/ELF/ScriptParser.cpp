@@ -1517,17 +1517,17 @@ Expr ScriptParser::readPrimary() {
     expect("(");
     Expr e = readExpr();
     if (consume(")")) {
-      e = checkAlignment(e, location);
       return [=, s = ctx.script] {
-        return alignToPowerOf2(s->getDot(), e().getValue());
+        uint64_t alignment = std::max((uint64_t)1, e().getValue());
+        return alignTo(s->getDot(), alignment);
       };
     }
     expect(",");
-    Expr e2 = checkAlignment(readExpr(), location);
+    Expr e2 = readExpr();
     expect(")");
     return [=] {
       ExprValue v = e();
-      v.alignment = e2().getValue();
+      v.alignment = std::max((uint64_t)1, e2().getValue());
       return v;
     };
   }

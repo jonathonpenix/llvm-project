@@ -10,6 +10,8 @@ SECTIONS {
   .bbb : { *(.bbb) }
   . = ALIGN(., 4096 * 4);
   .ccc : { *(.ccc) }
+  . = ALIGN(., 1000);
+  .ddd : { *(.ddd) }
 }
 
 # CHECK:      Sections:
@@ -18,3 +20,4 @@ SECTIONS {
 # CHECK-NEXT:   1 .aaa          00000008 0000000000010000 DATA
 # CHECK-NEXT:   2 .bbb          00000008 0000000000011000 DATA
 # CHECK-NEXT:   3 .ccc          00000008 0000000000014000 DATA
+# CHECK-NEXT:   4 .ddd          00000008 0000000000014050 DATA
