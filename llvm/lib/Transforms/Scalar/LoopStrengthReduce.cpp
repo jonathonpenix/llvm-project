@@ -1526,11 +1526,14 @@ void Cost::RateFormula(const Formula &F, SmallPtrSetImpl<const SCEV *> &Regs,
 
   // Determine how many (unfolded) adds we'll need inside the loop.
   size_t NumBaseParts = F.getNumRegs();
+  // If the registers can't all be folded into the access, Expand() sums them
+  // into a single register first, and each fixup's offset is then applied to
+  // that sum.
+  bool RegsFolded = isAMCompletelyFolded(*TTI, LU, F);
   if (NumBaseParts > 1)
     // Do not count the base and a possible second register if the target
     // allows to fold 2 registers.
-    C.NumBaseAdds +=
-        NumBaseParts - (1 + (F.Scale && isAMCompletelyFolded(*TTI, LU, F)));
+    C.NumBaseAdds += NumBaseParts - (1 + (F.Scale && RegsFolded));
   C.NumBaseAdds += (F.UnfoldedOffset.isNonZero());
 
   // Accumulate non-free scaling amounts.
@@ -1549,10 +1552,15 @@ void Cost::RateFormula(const Formula &F, SmallPtrSetImpl<const SCEV *> &Regs,
 
       // Check with target if this offset with this instruction is
       // specifically not supported.
-      if (LU.Kind == LSRUse::Address && Offset.isNonZero() &&
-          !isAMCompletelyFolded(*TTI, LSRUse::Address, LU.AccessTy, F.BaseGV,
-                                Offset, F.HasBaseReg, F.Scale, Fixup.UserInst))
-        C.NumBaseAdds++;
+      if (LU.Kind == LSRUse::Address && Offset.isNonZero()) {
+        // When the registers are summed separately (already charged above),
+        // the access only has to fold "sum + Offset".
+        bool SummedRegs = NumBaseParts > 1 && !RegsFolded;
+        if (!isAMCompletelyFolded(*TTI, LSRUse::Address, LU.AccessTy, F.BaseGV,
+                                  Offset, SummedRegs ? true : F.HasBaseReg,
+                                  SummedRegs ? 0 : F.Scale, Fixup.UserInst))
+          C.NumBaseAdds++;
+      }
     } else {
       // Incompatible immediate type, increase cost to avoid using
       C.ImmCost += 2048;
